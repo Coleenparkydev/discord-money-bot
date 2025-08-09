@@ -4,6 +4,8 @@ import sqlite3
 from datetime import datetime, timedelta
 import asyncio
 import os
+from threading import Thread
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # Bot setup  
 intents = discord.Intents.default()
@@ -104,6 +106,22 @@ class MoneyBot:
         self.update_user_data(user_id, wallet=new_wallet, daily_earned=new_daily, last_date=today)
         return True
 
+# Simple HTTP server for Render health checks
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b'Bot is running!')
+    
+    def log_message(self, format, *args):
+        pass  # Suppress server logs
+
+def run_health_server():
+    port = int(os.environ.get('PORT', 8000))
+    server = HTTPServer(('0.0.0.0', port), HealthHandler)
+    server.serve_forever()
+
 # Initialize the money system
 money_system = MoneyBot()
 
@@ -118,21 +136,19 @@ async def on_message(message):
     if message.author.bot:
         return
     
+    # Process commands first (this prevents earning money from commands)
+    await bot.process_commands(message)
+    
     # Don't give money for messages in #money channel
     if message.channel.name.lower() == "money":
-        await bot.process_commands(message)
         return
     
     # Don't give money for command messages (messages starting with !)
     if message.content.startswith('!'):
-        await bot.process_commands(message)
         return
     
     # Add money for regular messages in other channels
-    earned = money_system.add_money(message.author.id)
-    
-    # Process commands
-    await bot.process_commands(message)
+    money_system.add_money(message.author.id)
 
 @bot.command(name='balance', aliases=['bal', 'money'])
 async def balance(ctx):
@@ -171,4 +187,11 @@ if __name__ == "__main__":
     if not TOKEN:
         print("Error: DISCORD_TOKEN environment variable not set!")
         exit(1)
+    
+    # Start health check server in background
+    health_thread = Thread(target=run_health_server, daemon=True)
+    health_thread.start()
+    print("Health server started")
+    
+    # Start the Discord bot
     bot.run(TOKEN)
