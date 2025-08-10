@@ -5,10 +5,10 @@ from datetime import datetime, timedelta
 import asyncio
 import os
 from threading import Thread
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, SimpleHTTPRequestHandler
 
-# Simple HTTP server for health checks
-class HealthHandler(BaseHTTPRequestHandler):
+# Simple HTTP server for health checks  
+class HealthHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.send_header('Content-type', 'text/plain')
@@ -17,11 +17,10 @@ class HealthHandler(BaseHTTPRequestHandler):
     
     def do_HEAD(self):
         self.send_response(200)
-        self.send_header('Content-type', 'text/plain')
         self.end_headers()
-    
+        
     def log_message(self, format, *args):
-        pass  # Suppress server logs
+        pass
 
 def run_health_server():
     port = int(os.environ.get('PORT', 8000))
@@ -35,7 +34,6 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 
 # Constants
 MONEY_PER_MESSAGE = 5
-DAILY_LIMIT = 300
 
 class MoneyBot:
     def __init__(self):
@@ -49,9 +47,7 @@ class MoneyBot:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
-                wallet_money INTEGER DEFAULT 0,
-                daily_earned INTEGER DEFAULT 0,
-                last_earn_date TEXT DEFAULT ""
+                wallet_money INTEGER DEFAULT 0
             )
         ''')
         
@@ -69,16 +65,16 @@ class MoneyBot:
         if not result:
             # Create new user
             cursor.execute('''
-                INSERT INTO users (user_id, wallet_money, daily_earned, last_earn_date)
-                VALUES (?, 0, 0, "")
+                INSERT INTO users (user_id, wallet_money)
+                VALUES (?, 0)
             ''', (user_id,))
             conn.commit()
-            result = (user_id, 0, 0, "")
+            result = (user_id, 0)
         
         conn.close()
         return result
     
-    def update_user_data(self, user_id, wallet=None, daily_earned=None, last_date=None):
+    def update_user_data(self, user_id, wallet=None):
         """Update user's money data"""
         conn = sqlite3.connect('money_bot.db')
         cursor = conn.cursor()
@@ -88,43 +84,21 @@ class MoneyBot:
         
         # Use provided values or keep current ones
         new_wallet = wallet if wallet is not None else current[1]
-        new_daily = daily_earned if daily_earned is not None else current[2]
-        new_date = last_date if last_date is not None else current[3]
         
         cursor.execute('''
             UPDATE users 
-            SET wallet_money = ?, daily_earned = ?, last_earn_date = ?
+            SET wallet_money = ?
             WHERE user_id = ?
-        ''', (new_wallet, new_daily, new_date, user_id))
+        ''', (new_wallet, user_id))
         
         conn.commit()
         conn.close()
     
-    def can_earn_money(self, user_id):
-        """Check if user can earn money today"""
-        user_data = self.get_user_data(user_id)
-        today = datetime.now().strftime("%Y-%m-%d")
-        
-        # If it's a new day, reset daily earnings
-        if user_data[3] != today:
-            self.update_user_data(user_id, daily_earned=0, last_date=today)
-            return True
-        
-        # Check if under daily limit
-        return user_data[2] < DAILY_LIMIT
-    
     def add_money(self, user_id):
-        """Add money to user's wallet if under daily limit"""
-        if not self.can_earn_money(user_id):
-            return False
-        
+        """Add money to user's wallet"""
         user_data = self.get_user_data(user_id)
-        today = datetime.now().strftime("%Y-%m-%d")
-        
         new_wallet = user_data[1] + MONEY_PER_MESSAGE
-        new_daily = user_data[2] + MONEY_PER_MESSAGE
-        
-        self.update_user_data(user_id, wallet=new_wallet, daily_earned=new_daily, last_date=today)
+        self.update_user_data(user_id, wallet=new_wallet)
         return True
 
 # Initialize the money system
@@ -165,11 +139,9 @@ async def balance(ctx):
     
     user_data = money_system.get_user_data(ctx.author.id)
     wallet = user_data[1]
-    daily_earned = user_data[2]
     
     embed = discord.Embed(title=f"💰 {ctx.author.display_name}'s Wallet", color=0x00ff00)
     embed.add_field(name="🪙 Balance", value=f"${wallet:,}", inline=True)
-    embed.add_field(name="📅 Daily Progress", value=f"${daily_earned}/{DAILY_LIMIT}", inline=True)
     
     await ctx.send(embed=embed)
 
@@ -177,12 +149,12 @@ async def balance(ctx):
 async def help_money(ctx):
     """Show money system help"""
     embed = discord.Embed(title="💰 Money System Commands", color=0xffd700)
-    embed.description = "Earn $5 for every message you send (up to $300/day)!"
+    embed.description = "Earn $5 for every message you send - no limits!"
     
     embed.add_field(name="!balance", value="Check your wallet balance (only in #money channel)", inline=False)
-    embed.add_field(name="Rules", value="• No money earned in #money channel\n• No money for using commands\n• Only regular chat messages earn $5", inline=False)
+    embed.add_field(name="Rules", value="• No money earned in #money channel\n• No money for using commands\n• Unlimited earning from regular chat messages", inline=False)
     
-    embed.set_footer(text="💡 Tip: Just keep chatting in other channels to earn money!")
+    embed.set_footer(text="💡 Tip: Just keep chatting in other channels to earn unlimited money!")
     
     await ctx.send(embed=embed)
 
