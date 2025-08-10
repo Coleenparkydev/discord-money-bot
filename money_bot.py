@@ -7,7 +7,23 @@ import os
 from threading import Thread
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-# Bot setup  
+# Simple HTTP server for health checks
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b'Bot is alive!')
+    
+    def log_message(self, format, *args):
+        pass  # Suppress server logs
+
+def run_health_server():
+    port = int(os.environ.get('PORT', 8000))
+    server = HTTPServer(('0.0.0.0', port), HealthHandler)
+    server.serve_forever()
+
+# Bot setup
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
@@ -106,22 +122,6 @@ class MoneyBot:
         self.update_user_data(user_id, wallet=new_wallet, daily_earned=new_daily, last_date=today)
         return True
 
-# Simple HTTP server for Render health checks
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header('Content-type', 'text/plain')
-        self.end_headers()
-        self.wfile.write(b'Bot is running!')
-    
-    def log_message(self, format, *args):
-        pass  # Suppress server logs
-
-def run_health_server():
-    port = int(os.environ.get('PORT', 8000))
-    server = HTTPServer(('0.0.0.0', port), HealthHandler)
-    server.serve_forever()
-
 # Initialize the money system
 money_system = MoneyBot()
 
@@ -191,7 +191,7 @@ if __name__ == "__main__":
     # Start health check server in background
     health_thread = Thread(target=run_health_server, daemon=True)
     health_thread.start()
-    print("Health server started")
+    print("Health server started on port", os.environ.get('PORT', 8000))
     
     # Start the Discord bot
     bot.run(TOKEN)
