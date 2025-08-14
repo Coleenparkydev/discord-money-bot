@@ -1,31 +1,8 @@
 import discord
 from discord.ext import commands
 import sqlite3
-from datetime import datetime, timedelta
-import asyncio
+from datetime import datetime
 import os
-from threading import Thread
-from http.server import HTTPServer, SimpleHTTPRequestHandler
-
-# Simple HTTP server for health checks  
-class HealthHandler(SimpleHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header('Content-type', 'text/plain')
-        self.end_headers()
-        self.wfile.write(b'Bot is alive!')
-    
-    def do_HEAD(self):
-        self.send_response(200)
-        self.end_headers()
-        
-    def log_message(self, format, *args):
-        pass
-
-def run_health_server():
-    port = int(os.environ.get('PORT', 8000))
-    server = HTTPServer(('0.0.0.0', port), HealthHandler)
-    server.serve_forever()
 
 # Bot setup
 intents = discord.Intents.default()
@@ -107,7 +84,7 @@ money_system = MoneyBot()
 @bot.event
 async def on_ready():
     print(f'{bot.user} has connected to Discord!')
-    print('Money & Banking Bot is ready!')
+    print('Money Bot is ready!')
 
 @bot.event
 async def on_message(message):
@@ -115,7 +92,7 @@ async def on_message(message):
     if message.author.bot:
         return
     
-    # Process commands first (this prevents earning money from commands)
+    # Process commands first
     await bot.process_commands(message)
     
     # Don't give money for messages in #money channel
@@ -158,17 +135,12 @@ async def help_money(ctx):
     
     await ctx.send(embed=embed)
 
-# Get token from environment variable for security
+# Get token from environment variable
 if __name__ == "__main__":
     TOKEN = os.getenv('DISCORD_TOKEN')
     if not TOKEN:
         print("Error: DISCORD_TOKEN environment variable not set!")
         exit(1)
     
-    # Start health check server in background
-    health_thread = Thread(target=run_health_server, daemon=True)
-    health_thread.start()
-    print("Health server started on port", os.environ.get('PORT', 8000))
-    
-    # Start the Discord bot
+    print("Starting Discord bot...")
     bot.run(TOKEN)
